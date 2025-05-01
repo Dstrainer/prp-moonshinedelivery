@@ -37,7 +37,7 @@ Config.MinCooldown      = 600   -- seconds
 Config.MaxCooldown      = 1800  -- seconds
 
 -- Items
-Config.MoonshineItem    = "moonshine_jar"
+Config.MoonshineItem    = "moonshine-jar"
 Config.MoneyItem        = "black_money"
 
 -- ps-dispatch alert definitions

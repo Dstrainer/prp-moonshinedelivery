@@ -1,5 +1,8 @@
 -- Client.lua
-local hasJob, dropCoords, bottleCount, jobBlip = false
+local lib        = exports.ox_lib          -- for lib.notify
+local hasJob     = false
+local dropCoords, bottleCount, jobBlip
+local carriedBox -- object id when carrying the box
 
 -- Spawn/despawn pickup NPC & target
 Citizen.CreateThread(function()
@@ -12,25 +15,28 @@ Citizen.CreateThread(function()
       or (hr >= Config.PickupHours.start or hr < Config.PickupHours.finish)
 
     if inWindow and not ped then
-      -- spawn dealer ped
+      -- spawn dealer ped & use rep-talkNPC for interaction
       RequestModel(Config.PickupPedModel); while not HasModelLoaded(Config.PickupPedModel) do Wait(10) end
       ped = CreatePed(4, Config.PickupPedModel, Config.PickupPedCoords.xyz, false, true)
       FreezeEntityPosition(ped, true); SetBlockingOfNonTemporaryEvents(ped, true)
 
-      netId = NetworkGetNetworkIdFromEntity(ped)
-      exports.ox_target:addEntity(netId, {
-        options = {{
-          icon     = "fa-solid fa-wine-bottle",
-          label    = "Buy Moonshine",
-          onSelect = function()
-            TriggerServerEvent('moonshine:server:StartJob')
-          end
-        }},
-        distance = 2.5
-      })  -- :contentReference[oaicite:10]{index=10}
-
+    exports['rep-talkNPC']:CreateNPC({
+        npc         = ped,
+        coords      = Config.PickupPedCoords,
+        name        = "Moonshine Dealer",
+        animScenario= "WORLD_HUMAN_DRINKING",
+        tag         = "moonshine",
+        color       = "#7f6000"
+        }, {
+          [1] = {
+            label   = "Buy Moonshine",
+            action  = function()
+              TriggerEvent('moonshine:client:PickupBox')
+            end
+          }
+        })
     elseif not inWindow and ped then
-      exports.ox_target:removeEntity(netId, "Buy Moonshine")
+      exports['rep-talkNPC']:RemoveNPC("moonshine")
       DeleteEntity(ped)
       ped, netId = nil, nil
     end
@@ -58,7 +64,7 @@ RegisterNetEvent('moonshine:client:JobAssigned', function(drop, bottles)
     function()
       if hasJob and math.random(100) <= Config.PoliceAlertChance then
         exports['ps-dispatch'][Config.SuspiciousExport]()  -- :contentReference[oaicite:11]{index=11}
-        lib.notify({ description = "Police may have been alerted!", type = "error" })  -- :contentReference[oaicite:12]{index=12}
+        lib.notify({ description = "Police may have been alerted!", type = "error", position= 'top', duration=5000 })  -- :contentReference[oaicite:12]{index=12}
       end
     end
   )
@@ -94,7 +100,7 @@ RegisterNetEvent('moonshine:client:JobAssigned', function(drop, bottles)
         exports.ox_target:addEntity(buyerNetId, {
           options = {{
             icon     = "fa-solid fa-handshake",
-            label    = "Hand Over Moonshine",
+            label    = "Deliver Moonshine",
             onSelect = function()
               -- illegal sale alert
               exports['ps-dispatch']:CustomAlert(Config.IllegalSaleAlert)  -- :contentReference[oaicite:13]{index=13}
@@ -109,6 +115,42 @@ RegisterNetEvent('moonshine:client:JobAssigned', function(drop, bottles)
         break
       end
       Wait(1_000)
+    end
+  end)
+  RegisterNetEvent('moonshine:client:PickupMoonshine', function()
+    -- 1a) Tell the server to StartJob (it will give items & set your drop-off)
+    TriggerServerEvent('moonshine:server:StartJob')
+  
+    -- 1b) Spawn a box prop & attach to the player’s hand
+    local ped = PlayerPedId()
+    local x,y,z = table.unpack(GetEntityCoords(ped, true))
+    local boxHash = GetHashKey("prop_box_wood02a")
+    RequestModel(boxHash)
+    while not HasModelLoaded(boxHash) do Wait(10) end
+  
+    carriedBox = CreateObject(boxHash, x, y, z + 0.2, true, true, true)
+    AttachEntityToEntity(
+      carriedBox, ped,
+      GetPedBoneIndex(ped, 57005),  -- right hand
+      0.12, 0.0, -0.02,             -- position offset
+      0.0, 0.0, 0.0,                -- rotation
+      false, false, false, false, 2, true
+    )
+  
+    lib.notify({ description = "Picked up box of moonshine. Place it in your vehicle.", type = "info", position= 'top', duration=5000 })  -- :contentReference[oaicite:15]{index=15}
+  end)
+  
+  -- 2) Watch for the player entering any vehicle. When they do,
+  --    we “stow” the box (delete it) and notify them.
+  Citizen.CreateThread(function()
+    while true do
+      Wait(500)
+      if carriedBox and IsPedInAnyVehicle(PlayerPedId(), false) then
+        DetachEntity(carriedBox, true, true)
+        DeleteEntity(carriedBox)
+        carriedBox = nil
+        lib.notify({ description = "Box placed in vehicle. Delivery in progress.", type = "success",  position= 'top', duration=5000 })  -- :contentReference[oaicite:16]{index=16}
+      end
     end
   end)
 end)

@@ -9,13 +9,13 @@ version     '1.1.0'
 
 shared_script '@ox_lib/init.lua'
 
-shared_script 'Config.lua'
-server_script 'Server.lua'
-client_script 'Client.lua'
+shared_script 'shared/config.lua'
+server_script 'server/server.lua'
+client_script 'client/client.lua'
 
 dependencies {
   'ox_inventory',
   'ox_target',
   'ox_lib',
-  'ps-dispatch'
+  'ps-dispatch',
 }
